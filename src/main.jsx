@@ -46,7 +46,7 @@ function ShirtArt({ product, large = false }) {
 
 function Header({ navigate, user, cartCount, openAuth, logout }) {
   const [menu, setMenu] = useState(false);
-  return <header className="header">
+  return <><div className="announcement"><button aria-label="Предыдущее предложение">‹</button><span>Бесплатная доставка по России от 20 000 ₽</span><button aria-label="Следующее предложение">›</button></div><header className="header">
     <button className="icon-button" onClick={() => setMenu(true)} aria-label="Меню"><Icon name="menu"/></button>
     <button className="wordmark" onClick={() => navigate('home')} aria-label="На главную">САРУ</button>
     <div className="header-actions">
@@ -64,24 +64,29 @@ function Header({ navigate, user, cartCount, openAuth, logout }) {
       </nav>
       <p>Рубашки для неспешной жизни.<br/>Москва · 2026</p>
     </div>}
-  </header>;
+  </header></>;
 }
 
 function Home({ products, navigate }) {
+  const iconic = [
+    { product: products[0], title: 'Тихий свет', text: 'Двойная нить и безупречная посадка', image: '/images/iconic-01.jpg' },
+    { product: products[1], title: 'Путешественник', text: 'Хлопок с мягкой несминаемой фактурой', image: '/images/iconic-02.jpg' },
+    { product: products[2], title: 'Деним', text: 'Тонкий хлопковый деним на каждый день', image: '/images/iconic-03.jpg' },
+    { product: products[3], title: 'Цельный воротник', text: 'Воротник, выкроенный из единой детали', image: '/images/iconic-04.jpg' },
+  ];
   return <>
     <section className="hero">
-      <div className="hero-placeholder">
-        <div className="sun-disc"/>
-        <div className="silhouette"><span/><span/></div>
-        <div className="grain"/>
-      </div>
-      <div className="hero-copy"><p>Коллекция 01 · 2026</p><h1>Одежда,<br/>в которой тихо</h1><button onClick={() => navigate('catalog')}>Смотреть коллекцию <Icon name="arrow"/></button></div>
+      <img className="hero-media" src="/images/saru-hero-v2.jpg" alt="Мужчина в льняной рубашке Сару у моря"/>
+      <div className="hero-shade"/>
+      <div className="hero-copy"><p>Рубашки, созданные надолго</p><h1>Знакомое мастерство.<br/>Новый повод<br/>выбрать его.</h1><button onClick={() => navigate('catalog')}>Смотреть все рубашки <Icon name="arrow"/></button></div>
       <div className="video-note"><span>Место для вашего видео</span><i/></div>
     </section>
-    <section className="intro"><p>САРУ / МАНИФЕСТ</p><h2>Мы создаём рубашки, которые не требуют повода. Натуральные ткани, мягкие линии и внимание к тому, как вещь живёт вместе с вами.</h2></section>
-    <section className="collection">
-      <div className="section-head"><div><p>Новая коллекция</p><h2>Рубашки Сару</h2></div><button onClick={() => navigate('catalog')}>Смотреть все <Icon name="arrow"/></button></div>
-      <div className="product-grid">{products.slice(0,4).map(p => <ProductCard key={p.id} product={p} navigate={navigate}/>)}</div>
+    <section className="iconic-section">
+      <div className="iconic-heading"><h2>Знаковые модели</h2><p>Четыре рубашки, которые определяют Сару</p></div>
+      <div className="iconic-grid">{iconic.map(item => <article className="iconic-card" key={item.product.id} onClick={() => navigate('product', item.product.id)}>
+        <div className="iconic-photo"><img src={item.image} alt={item.title}/></div>
+        <div className="iconic-copy"><h3>{item.title}</h3><p>{item.text}</p><strong>от {money(item.product.price)}</strong></div>
+      </article>)}</div>
     </section>
     <section className="editorial"><div><p>Материал 01</p><h2>Хлопок, лён<br/>и немного воздуха</h2></div><p>Мы выбираем ткани за тактильность, долговечность и способность становиться только лучше со временем.</p></section>
     <Newsletter />
