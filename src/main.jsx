@@ -2,11 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { PRODUCTS, money } from './data';
 import { Icon, Shirt } from './ui';
+import { api } from './api';
 import './app.css';
-
-const read = (key, fallback) => {
-  try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; }
-};
 
 function Header({ go, user, cartCount, openAuth, logout }) {
   const [open, setOpen] = useState(false);
@@ -105,41 +102,64 @@ function Cart({ cart, change, remove, go }) {
   </div></main>;
 }
 
-function Auth({ message, close, login }) {
+function Auth({ message, close, onSession }) {
   const [mode, setMode] = useState('login');
-  const [sent, setSent] = useState(false);
-  const submit = e => {
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [devToken, setDevToken] = useState('');
+  const submit = async e => {
     e.preventDefault();
-    if (mode === 'reset') return setSent(true);
-    const email = new FormData(e.currentTarget).get('email');
-    login({ email, role: email === 'moderator@saru.ru' ? 'moderator' : 'customer' }); close();
+    setBusy(true); setError('');
+    const data = Object.fromEntries(new FormData(e.currentTarget));
+    try {
+      if (mode === 'reset') {
+        const result = await api.resetRequest(data.email);
+        setDevToken(result.devToken || ''); setMode('resetConfirm'); return;
+      }
+      if (mode === 'resetConfirm') {
+        await api.resetPassword({token:data.token,password:data.password});
+        setMode('login'); setDevToken(''); return;
+      }
+      const session = mode === 'register' ? await api.register(data) : await api.login(data);
+      onSession(session); close();
+    } catch (err) { setError(err.message); }
+    finally { setBusy(false); }
   };
   return <div className="modal"><button className="modal-air" onClick={close}/><section className="auth">
     <button className="round auth-close" onClick={close}><Icon name="close"/></button>
-    <h2>{mode === 'register' ? 'Новый профиль' : mode === 'reset' ? 'Вернуть доступ' : 'С возвращением'}</h2>{message && <p className="auth-message">{message}</p>}
-    {sent ? <div className="sent"><Icon name="check" size={28}/><p>Ссылка отправлена на вашу почту.</p></div> : <form onSubmit={submit}>
+    <h2>{mode === 'register' ? 'Новый профиль' : mode === 'reset' ? 'Вернуть доступ' : mode === 'resetConfirm' ? 'Новый пароль' : 'С возвращением'}</h2>{message && <p className="auth-message">{message}</p>}{error && <p className="auth-error">{error}</p>}
+    <form onSubmit={submit}>
       {mode === 'register' && <label>Имя<input name="name" required placeholder="Как к вам обращаться"/></label>}
-      <label>Почта<input name="email" type="email" required placeholder="name@example.ru"/></label>
-      {mode !== 'reset' && <label>Пароль<input name="password" type="password" minLength="6" required placeholder="Минимум 6 символов"/></label>}
-      <button className="action">{mode === 'register' ? 'Создать профиль' : mode === 'reset' ? 'Отправить ссылку' : 'Войти'}</button>
-    </form>}
-    <div className="auth-switch">{mode === 'login' ? <><button onClick={() => setMode('reset')}>Забыли пароль?</button><button onClick={() => setMode('register')}>Создать профиль</button></> : <button onClick={() => {setMode('login');setSent(false)}}>Вернуться ко входу</button>}</div>
-    <small>Демо-модератор: moderator@saru.ru</small>
+      {mode !== 'resetConfirm' && <label>Почта<input name="email" type="email" required placeholder="name@example.ru"/></label>}
+      {mode === 'resetConfirm' && <label>Код восстановления<input name="token" required defaultValue={devToken} placeholder="Код из письма"/></label>}
+      {mode !== 'reset' && <label>Пароль<input name="password" type="password" minLength="8" required placeholder="Минимум 8 символов"/></label>}
+      <button className="action" disabled={busy}>{busy ? 'Подождите…' : mode === 'register' ? 'Создать профиль' : mode === 'reset' ? 'Получить код' : mode === 'resetConfirm' ? 'Сохранить пароль' : 'Войти'}</button>
+    </form>
+    <div className="auth-switch">{mode === 'login' ? <><button onClick={() => setMode('reset')}>Забыли пароль?</button><button onClick={() => setMode('register')}>Создать профиль</button></> : <button onClick={() => setMode('login')}>Вернуться ко входу</button>}</div>
   </section></div>;
 }
 
 function Account({ user, go }) {
-  return <main className="shell account"><h1>Профиль</h1><div><span>Электронная почта</span><strong>{user?.email}</strong></div><div><span>Заказы</span><strong>Пока нет заказов</strong></div><button className="action compact" onClick={() => go('catalog')}>Смотреть товары</button></main>;
+  return <main className="shell account"><h1>{user?.name || 'Профиль'}</h1><div><span>Электронная почта</span><strong>{user?.email}</strong></div><div><span>Заказы</span><strong>Пока нет заказов</strong></div><button className="action compact" onClick={() => go('catalog')}>Смотреть товары</button></main>;
 }
 
 function Admin({ products, setProducts, user, go }) {
   const [edit, setEdit] = useState(null);
+  const [error, setError] = useState('');
   if (!user || user.role !== 'moderator') return <main className="empty-state"><h1>Закрытая зона</h1><p>Войдите как moderator@saru.ru</p><button className="action compact" onClick={() => go('home')}>На главную</button></main>;
-  const save = e => { e.preventDefault(); const d = new FormData(e.currentTarget); setProducts(products.map(p => p.id === edit.id ? {...p,name:d.get('name'),price:+d.get('price'),color:d.get('color'),story:d.get('story')} : p)); setEdit(null); };
+  const save = async e => {
+    e.preventDefault(); setError('');
+    const d = new FormData(e.currentTarget);
+    const changed = {...edit,name:d.get('name'),price:+d.get('price'),color:d.get('color'),story:d.get('story')};
+    try {
+      const {product}=await api.saveProduct(changed);
+      setProducts(products.map(p => p.id===product.id?product:p)); setEdit(null);
+    } catch(err) { setError(err.message); }
+  };
   return <main className="admin"><aside><button className="logo" onClick={() => go('home')}>САРУ</button><nav><button className="active">Товары <b>{products.length}</b></button><button>Заказы <b>0</b></button></nav><button className="admin-exit" onClick={() => go('home')}><Icon name="back"/> На сайт</button></aside><section>
     <header><h1>Товары</h1><button className="action compact" onClick={() => setEdit(products[0])}>Редактировать</button></header>
     <div className="admin-list">{products.map(p => <article key={p.id}><div>{p.image ? <img src={p.image} alt=""/> : <Shirt product={p}/>}</div><strong>{p.name}</strong><span>{p.color}</span><span>{money(p.price)}</span><i>Опубликован</i><button onClick={() => setEdit(p)}><Icon name="edit"/></button></article>)}</div>
-  </section>{edit && <div className="modal"><button className="modal-air" onClick={() => setEdit(null)}/><form className="editor" onSubmit={save}><button type="button" className="round auth-close" onClick={() => setEdit(null)}><Icon name="close"/></button><h2>{edit.name}</h2><label>Название<input name="name" defaultValue={edit.name}/></label><div><label>Цена<input name="price" type="number" defaultValue={edit.price}/></label><label>Цвет<input name="color" defaultValue={edit.color}/></label></div><label>Описание<textarea name="story" defaultValue={edit.story}/></label><button className="action">Сохранить</button></form></div>}</main>;
+  </section>{edit && <div className="modal"><button className="modal-air" onClick={() => setEdit(null)}/><form className="editor" onSubmit={save}><button type="button" className="round auth-close" onClick={() => setEdit(null)}><Icon name="close"/></button><h2>{edit.name}</h2>{error&&<p className="auth-error">{error}</p>}<label>Название<input name="name" defaultValue={edit.name}/></label><div><label>Цена<input name="price" type="number" defaultValue={edit.price}/></label><label>Цвет<input name="color" defaultValue={edit.color}/></label></div><label>Описание<textarea name="story" defaultValue={edit.story}/></label><button className="action">Сохранить</button></form></div>}</main>;
 }
 
 function Story() {
@@ -152,18 +172,29 @@ function Footer({ go }) {
 
 function App() {
   const [route, setRoute] = useState({ name:'home' });
-  const [products,setProducts] = useState(() => read('saru-products-v2', PRODUCTS));
-  const [cart,setCart] = useState(() => read('saru-cart', []));
-  const [user,setUser] = useState(() => read('saru-user', null));
+  const [products,setProducts] = useState(PRODUCTS);
+  const [cart,setCart] = useState([]);
+  const [user,setUser] = useState(null);
   const [auth,setAuth] = useState(null);
+  const [ready,setReady] = useState(false);
+  const [notice,setNotice] = useState('');
   const go = (name,id) => setRoute({name,id});
   useEffect(() => window.scrollTo({top:0,behavior:'smooth'}), [route]);
-  useEffect(() => localStorage.setItem('saru-products-v2',JSON.stringify(products)),[products]);
-  useEffect(() => localStorage.setItem('saru-cart',JSON.stringify(cart)),[cart]);
-  useEffect(() => user ? localStorage.setItem('saru-user',JSON.stringify(user)) : localStorage.removeItem('saru-user'),[user]);
-  const add = (p,size) => setCart(old => { const x=old.find(i=>i.id===p.id&&i.size===size); return x?old.map(i=>i===x?{...i,qty:i.qty+1}:i):[...old,{...p,size,qty:1}] });
-  const change = (item,n) => setCart(old => old.map(i=>i.id===item.id&&i.size===item.size?{...i,qty:i.qty+n}:i).filter(i=>i.qty>0));
-  const remove = item => setCart(old => old.filter(i=>!(i.id===item.id&&i.size===item.size)));
+  useEffect(() => {
+    Promise.all([api.products(),api.session()])
+      .then(([catalog,session]) => { setProducts(catalog.products); setUser(session.user); setCart(session.cart); })
+      .catch(err => setNotice(err.message))
+      .finally(() => setReady(true));
+  },[]);
+  const onSession = session => { setUser(session.user); setCart(session.cart||[]); api.products().then(x=>setProducts(x.products)); };
+  const logout = async () => { await api.logout(); setUser(null); setCart([]); if(route.name==='admin'||route.name==='account') go('home'); };
+  const updateCart = async (p,size,quantity) => {
+    try { const result=await api.setCartItem({productId:p.id,size,quantity}); setCart(result.cart); }
+    catch(err) { setNotice(err.message); }
+  };
+  const add = (p,size) => { const x=cart.find(i=>i.id===p.id&&i.size===size); return updateCart(p,size,(x?.qty||0)+1); };
+  const change = (item,n) => updateCart(item,item.size,item.qty+n);
+  const remove = item => updateCart(item,item.size,0);
   const page = useMemo(() => {
     const props={products,go};
     if(route.name==='catalog') return <Catalog {...props}/>;
@@ -174,7 +205,8 @@ function App() {
     if(route.name==='story') return <Story/>;
     return <Home {...props}/>;
   },[route,products,cart,user]);
-  return <><Header go={go} user={user} cartCount={cart.reduce((s,i)=>s+i.qty,0)} openAuth={()=>setAuth(true)} logout={()=>setUser(null)}/>{page}{route.name!=='admin'&&<Footer go={go}/>} {auth&&<Auth message={typeof auth==='string'?auth:null} close={()=>setAuth(null)} login={setUser}/>}</>;
+  if(!ready) return <div className="boot">САРУ</div>;
+  return <><Header go={go} user={user} cartCount={cart.reduce((s,i)=>s+i.qty,0)} openAuth={()=>setAuth(true)} logout={logout}/>{notice&&<button className="notice" onClick={()=>setNotice('')}>{notice}<Icon name="close" size={15}/></button>}{page}{route.name!=='admin'&&<Footer go={go}/>} {auth&&<Auth message={typeof auth==='string'?auth:null} close={()=>setAuth(null)} onSession={onSession}/>}</>;
 }
 
 createRoot(document.getElementById('root')).render(<App/>);
