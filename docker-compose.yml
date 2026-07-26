@@ -28,6 +28,7 @@ services:
       API_PORT: 8787
       NODE_ENV: production
       PUBLIC_URL: ${PUBLIC_URL:-http://localhost:8787}
+      TRUST_PROXY: ${TRUST_PROXY:-false}
       MODERATOR_EMAIL: ${MODERATOR_EMAIL:-moderator@saru.ru}
       MODERATOR_PASSWORD: ${MODERATOR_PASSWORD:-SaruDemo2026!}
       SMTP_HOST: ${SMTP_HOST:-}

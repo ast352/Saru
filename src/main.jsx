@@ -148,18 +148,36 @@ function Auth({ message, close, onSession }) {
       {mode === 'register' && <label>Имя<input name="name" required placeholder="Как к вам обращаться"/></label>}
       {mode !== 'resetConfirm' && <label>Почта<input name="email" type="email" required placeholder="name@example.ru"/></label>}
       {mode === 'resetConfirm' && <label>Код восстановления<input name="token" required defaultValue={devToken} placeholder="Код из письма"/></label>}
-      {mode !== 'reset' && <label>Пароль<input name="password" type="password" minLength="8" required placeholder="Минимум 8 символов"/></label>}
+      {mode !== 'reset' && <label>Пароль<input name="password" type="password" minLength="10" maxLength="128" required placeholder="Минимум 10 символов"/></label>}
       <button className="action" disabled={busy}>{busy ? 'Подождите…' : mode === 'register' ? 'Создать профиль' : mode === 'reset' ? 'Получить код' : mode === 'resetConfirm' ? 'Сохранить пароль' : 'Войти'}</button>
     </form>
     <div className="auth-switch">{mode === 'login' ? <><button onClick={() => setMode('reset')}>Забыли пароль?</button><button onClick={() => setMode('register')}>Создать профиль</button></> : <button onClick={() => setMode('login')}>Вернуться ко входу</button>}</div>
   </section></div>;
 }
 
-function Account({ user, go }) {
+function Account({ user, go, onUser, onLogout }) {
   const [orders,setOrders]=useState([]);
-  useEffect(()=>{api.orders().then(x=>setOrders(x.orders)).catch(()=>{})},[]);
-  return <main className="shell account"><h1>{user?.name || 'Профиль'}</h1><div><span>Электронная почта</span><strong>{user?.email}</strong></div>
+  const [addresses,setAddresses]=useState([]);
+  const [message,setMessage]=useState('');
+  const [error,setError]=useState('');
+  const [verificationToken,setVerificationToken]=useState('');
+  const load=()=>Promise.all([api.orders(),api.addresses()]).then(([o,a])=>{setOrders(o.orders);setAddresses(a.addresses)});
+  useEffect(()=>{load().catch(err=>setError(err.message))},[]);
+  const run=async action=>{setError('');setMessage('');try{await action()}catch(err){setError(err.message)}};
+  const saveName=e=>{e.preventDefault();const name=new FormData(e.currentTarget).get('name');run(async()=>{const {user:next}=await api.updateProfile({name});onUser(next);setMessage('Имя сохранено')})};
+  const changePassword=e=>{e.preventDefault();const d=Object.fromEntries(new FormData(e.currentTarget));run(async()=>{await api.changePassword(d);setMessage('Пароль изменён. Войдите снова.');setTimeout(onLogout,900)})};
+  const addAddress=e=>{e.preventDefault();const form=e.currentTarget,d=Object.fromEntries(new FormData(form));d.isDefault=d.isDefault==='on';run(async()=>{await api.saveAddress(d);form.reset();await load();setMessage('Адрес сохранён')})};
+  const resend=()=>run(async()=>{const result=await api.resendVerification();setVerificationToken(result.devToken||'');setMessage(result.sent?'Письмо отправлено':'Локальный код создан')});
+  const verify=()=>run(async()=>{await api.verifyEmail(verificationToken);const session=await api.session();onUser(session.user);setVerificationToken('');setMessage('Почта подтверждена')});
+  const removeAccount=e=>{e.preventDefault();if(!confirm('Удалить профиль и личные данные? Отменить это действие нельзя.'))return;const password=new FormData(e.currentTarget).get('password');run(async()=>{await api.deleteAccount(password);onLogout()})};
+  return <main className="shell account"><h1>{user?.name || 'Профиль'}</h1>{error&&<p className="auth-error">{error}</p>}{message&&<p className="profile-message">{message}</p>}
+    <div><span>Электронная почта</span><strong>{user?.email} · {user?.emailVerified?'подтверждена':'не подтверждена'}</strong></div>
+    {!user?.emailVerified&&<section className="profile-panel"><h2>Подтверждение почты</h2><p>Отправим одноразовую ссылку, действующую 24 часа.</p><button className="outline-action" onClick={resend}>Отправить письмо</button>{verificationToken&&<div className="local-verification"><input value={verificationToken} onChange={e=>setVerificationToken(e.target.value)}/><button onClick={verify}>Подтвердить локально</button></div>}</section>}
+    <div className="profile-grid"><section className="profile-panel"><h2>Личные данные</h2><form onSubmit={saveName}><label>Имя<input name="name" defaultValue={user?.name} required maxLength="100"/></label><button className="outline-action">Сохранить</button></form></section>
+    <section className="profile-panel"><h2>Смена пароля</h2><form onSubmit={changePassword}><label>Текущий пароль<input name="currentPassword" type="password" required/></label><label>Новый пароль<input name="newPassword" type="password" minLength="10" maxLength="128" required/></label><button className="outline-action">Сменить пароль</button></form></section></div>
+    <section className="profile-panel addresses"><h2>Адреса доставки</h2><div className="address-list">{addresses.map(a=><article key={a.id}><strong>{a.label}{a.is_default?' · основной':''}</strong><span>{a.recipient_name}, {a.phone}</span><p>{a.city}, {a.street}, {a.house}{a.apartment?`, кв. ${a.apartment}`:''}</p><button onClick={()=>run(async()=>{await api.deleteAddress(a.id);await load()})}>Удалить</button></article>)}</div><form onSubmit={addAddress} className="address-form"><label>Название<input name="label" placeholder="Дом" required/></label><label>Получатель<input name="recipientName" defaultValue={user?.name} required/></label><label>Телефон<input name="phone" required/></label><label>Город<input name="city" required/></label><label>Улица<input name="street" required/></label><label>Дом<input name="house" required/></label><label>Квартира<input name="apartment"/></label><label>Индекс<input name="postalCode"/></label><label className="check-field"><input type="checkbox" name="isDefault"/> Основной адрес</label><button className="outline-action">Добавить адрес</button></form></section>
     <section className="order-history"><h2>Заказы</h2>{orders.length?orders.map(o=><article key={o.id}><div><strong>Заказ №{o.id}</strong><span>{new Date(o.created_at).toLocaleDateString('ru-RU')}</span></div><div><span>{o.items.map(i=>`${i.name}, ${i.size} × ${i.quantity}`).join(' · ')}</span><b>{money(Number(o.total))}</b></div><i>{({new:'Новый',confirmed:'Подтверждён',shipped:'Отправлен',completed:'Завершён',cancelled:'Отменён'})[o.status]}</i></article>):<p>Пока нет заказов</p>}</section>
+    <section className="danger-zone"><h2>Удаление профиля</h2><p>История заказов останется в обезличенном виде.</p><form onSubmit={removeAccount}><input name="password" type="password" required placeholder="Введите текущий пароль"/><button>Удалить профиль</button></form></section>
     <button className="action compact" onClick={() => go('catalog')}>Смотреть товары</button></main>;
 }
 
@@ -214,6 +232,13 @@ function App() {
       .catch(err => setNotice(err.message))
       .finally(() => setReady(true));
   },[]);
+  useEffect(()=>{
+    const token=new URLSearchParams(window.location.search).get('verify');
+    if(!token)return;
+    api.verifyEmail(token).then(()=>api.session()).then(session=>{setUser(session.user);setNotice('Почта успешно подтверждена')}).catch(err=>setNotice(err.message)).finally(()=>{
+      const clean=new URL(window.location.href);clean.searchParams.delete('verify');window.history.replaceState({},'',clean.pathname+clean.search);
+    });
+  },[]);
   const onSession = session => { setUser(session.user); setCart(session.cart||[]); api.products().then(x=>setProducts(x.products)); };
   const logout = async () => { await api.logout(); setUser(null); setCart([]); if(route.name==='admin'||route.name==='account') go('home'); };
   const updateCart = async (p,size,quantity) => {
@@ -228,7 +253,7 @@ function App() {
     if(route.name==='catalog') return <Catalog {...props}/>;
     if(route.name==='product') return <ProductPage product={products.find(p=>p.id===route.id)||products[0]} user={user} add={add} go={go} openAuth={m=>setAuth(m||true)}/>;
     if(route.name==='cart') return <Cart cart={cart} change={change} remove={remove} go={go} user={user} onOrdered={()=>setCart([])}/>;
-    if(route.name==='account') return <Account user={user} go={go}/>;
+    if(route.name==='account') return <Account user={user} go={go} onUser={setUser} onLogout={logout}/>;
     if(route.name==='admin') return <Admin products={products} setProducts={setProducts} user={user} go={go}/>;
     if(route.name==='story') return <Story/>;
     return <Home {...props}/>;

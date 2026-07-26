@@ -2,7 +2,7 @@ import pg from 'pg';
 import { readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import { PRODUCTS } from '../src/data.js';
 
 const { Pool } = pg;
@@ -15,8 +15,12 @@ const hashPassword = password => {
 };
 
 export const verifyPassword = (password,stored) => {
-  const [salt,expected]=stored.split(':');
-  return timingSafeEqual(scryptSync(password,salt,64),Buffer.from(expected,'hex'));
+  try {
+    const [salt,expected]=String(stored||'').split(':');
+    const expectedBuffer=Buffer.from(expected||'','hex');
+    if(!salt||expectedBuffer.length!==64)return false;
+    return timingSafeEqual(scryptSync(password,salt,64),expectedBuffer);
+  } catch { return false; }
 };
 
 const productSelect = `
@@ -36,7 +40,24 @@ const normalizeProduct = row => row && ({
 });
 
 export async function initDb() {
-  await pool.query(await readFile(resolve(root,'server/schema.sql'),'utf8'));
+  await pool.query('CREATE TABLE IF NOT EXISTS schema_migrations(name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW())');
+  const migrations=[
+    ['001_initial.sql',resolve(root,'server/schema.sql')],
+    ['002_security_audit.sql',resolve(root,'server/migrations/002_security_audit.sql')],
+    ['003_customer_profile.sql',resolve(root,'server/migrations/003_customer_profile.sql')],
+  ];
+  for(const [name,path] of migrations){
+    const applied=await pool.query('SELECT 1 FROM schema_migrations WHERE name=$1',[name]);
+    if(applied.rowCount)continue;
+    const client=await pool.connect();
+    try{
+      await client.query('BEGIN');
+      await client.query(await readFile(path,'utf8'));
+      await client.query('INSERT INTO schema_migrations(name) VALUES($1)',[name]);
+      await client.query('COMMIT');
+    }catch(error){await client.query('ROLLBACK');throw error}
+    finally{client.release()}
+  }
   const {rows:[count]}=await pool.query('SELECT COUNT(*)::int AS count FROM products');
   if(!count.count) {
     for(const [position,p] of PRODUCTS.entries()) {
@@ -59,7 +80,7 @@ export async function initDb() {
 export async function createUser({name,email,password}) {
   const {rows:[user]}=await pool.query(`
     INSERT INTO users(name,email,password_hash) VALUES($1,LOWER($2),$3)
-    RETURNING id,name,email,role,created_at AS "createdAt"
+    RETURNING id,name,email,role,email_verified AS "emailVerified",created_at AS "createdAt"
   `,[name.trim(),email.trim(),hashPassword(password)]);
   return {...user,id:Number(user.id)};
 }
@@ -80,10 +101,119 @@ export async function createSession(userId) {
 export async function userFromSession(token) {
   if(!token) return null;
   const {rows}=await pool.query(`
-    SELECT u.id,u.name,u.email,u.role,u.created_at AS "createdAt"
+    SELECT u.id,u.name,u.email,u.role,u.email_verified AS "emailVerified",u.created_at AS "createdAt"
     FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token=$1 AND s.expires_at>NOW()
   `,[token]);
   return rows[0]?{...rows[0],id:Number(rows[0].id)}:null;
+}
+
+const verificationHash=token=>createHash('sha256').update(token).digest('hex');
+
+export async function createEmailVerification(userId) {
+  const token=randomBytes(32).toString('base64url');
+  await pool.query('DELETE FROM email_verification_tokens WHERE user_id=$1 OR expires_at<NOW()',[userId]);
+  await pool.query(`
+    INSERT INTO email_verification_tokens(token_hash,user_id,expires_at)
+    VALUES($1,$2,NOW()+INTERVAL '24 hours')
+  `,[verificationHash(token),userId]);
+  return token;
+}
+
+export async function verifyEmailToken(token) {
+  const client=await pool.connect();
+  try{
+    await client.query('BEGIN');
+    const {rows:[record]}=await client.query(`
+      SELECT * FROM email_verification_tokens
+      WHERE token_hash=$1 AND used_at IS NULL AND expires_at>NOW() FOR UPDATE
+    `,[verificationHash(String(token||''))]);
+    if(!record){await client.query('ROLLBACK');return false}
+    await client.query('UPDATE users SET email_verified=TRUE WHERE id=$1',[record.user_id]);
+    await client.query('UPDATE email_verification_tokens SET used_at=NOW() WHERE token_hash=$1',[record.token_hash]);
+    await client.query('COMMIT');return true;
+  }catch(error){await client.query('ROLLBACK');throw error}
+  finally{client.release()}
+}
+
+export async function updateProfileName(userId,name) {
+  const {rows:[user]}=await pool.query(`
+    UPDATE users SET name=$1 WHERE id=$2
+    RETURNING id,name,email,role,email_verified AS "emailVerified",created_at AS "createdAt"
+  `,[name.trim(),userId]);
+  return user;
+}
+
+export async function changePassword(userId,currentPassword,newPassword) {
+  const {rows:[user]}=await pool.query('SELECT password_hash FROM users WHERE id=$1',[userId]);
+  if(!user||!verifyPassword(currentPassword,user.password_hash))return false;
+  const client=await pool.connect();
+  try{
+    await client.query('BEGIN');
+    await client.query('UPDATE users SET password_hash=$1 WHERE id=$2',[hashPassword(newPassword),userId]);
+    await client.query('DELETE FROM sessions WHERE user_id=$1',[userId]);
+    await client.query('COMMIT');return true;
+  }catch(error){await client.query('ROLLBACK');throw error}
+  finally{client.release()}
+}
+
+export async function listAddresses(userId) {
+  const {rows}=await pool.query('SELECT * FROM user_addresses WHERE user_id=$1 ORDER BY is_default DESC,id',[userId]);
+  return rows;
+}
+
+export async function saveAddress(userId,address) {
+  const client=await pool.connect();
+  try{
+    await client.query('BEGIN');
+    if(address.isDefault)await client.query('UPDATE user_addresses SET is_default=FALSE WHERE user_id=$1',[userId]);
+    let row;
+    if(address.id){
+      const result=await client.query(`
+        UPDATE user_addresses SET label=$1,recipient_name=$2,phone=$3,city=$4,street=$5,house=$6,apartment=$7,postal_code=$8,is_default=$9,updated_at=NOW()
+        WHERE id=$10 AND user_id=$11 RETURNING *
+      `,[address.label,address.recipientName,address.phone,address.city,address.street,address.house,address.apartment||'',address.postalCode||'',Boolean(address.isDefault),address.id,userId]);
+      row=result.rows[0];
+    }else{
+      const result=await client.query(`
+        INSERT INTO user_addresses(user_id,label,recipient_name,phone,city,street,house,apartment,postal_code,is_default)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *
+      `,[userId,address.label,address.recipientName,address.phone,address.city,address.street,address.house,address.apartment||'',address.postalCode||'',Boolean(address.isDefault)]);
+      row=result.rows[0];
+    }
+    if(!row)throw Object.assign(new Error('Адрес не найден'),{status:404});
+    await client.query('COMMIT');return row;
+  }catch(error){await client.query('ROLLBACK');throw error}
+  finally{client.release()}
+}
+
+export async function deleteAddress(userId,addressId) {
+  const result=await pool.query('DELETE FROM user_addresses WHERE id=$1 AND user_id=$2',[addressId,userId]);
+  return result.rowCount>0;
+}
+
+export async function deleteCustomerAccount(userId,password) {
+  const {rows:[user]}=await pool.query('SELECT password_hash,role FROM users WHERE id=$1',[userId]);
+  if(!user||user.role==='moderator'||!verifyPassword(password,user.password_hash))return false;
+  const client=await pool.connect();
+  try{
+    await client.query('BEGIN');
+    const {rows:[orders]}=await client.query('SELECT COUNT(*)::int AS count FROM orders WHERE user_id=$1',[userId]);
+    if(orders.count){
+      const anonymous=`deleted-${userId}-${randomBytes(5).toString('hex')}@deleted.invalid`;
+      await client.query(`
+        UPDATE users SET name='Удалённый пользователь',email=$1,password_hash=$2,email_verified=FALSE WHERE id=$3
+      `,[anonymous,hashPassword(randomBytes(32).toString('hex')),userId]);
+      await client.query('DELETE FROM sessions WHERE user_id=$1',[userId]);
+      await client.query('DELETE FROM cart_items WHERE user_id=$1',[userId]);
+      await client.query('DELETE FROM user_addresses WHERE user_id=$1',[userId]);
+      await client.query(`
+        UPDATE orders SET customer_name='Удалённый пользователь',phone='',email=$1,address='',comment=''
+        WHERE user_id=$2
+      `,[anonymous,userId]);
+    }else await client.query('DELETE FROM users WHERE id=$1',[userId]);
+    await client.query('COMMIT');return true;
+  }catch(error){await client.query('ROLLBACK');throw error}
+  finally{client.release()}
 }
 
 export const deleteSession = token => token ? pool.query('DELETE FROM sessions WHERE token=$1',[token]) : null;
@@ -224,6 +354,13 @@ export async function updateOrderStatus(id,status) {
   if(!allowed.includes(status)) throw Object.assign(new Error('Некорректный статус'),{status:400});
   await pool.query('UPDATE orders SET status=$1,updated_at=NOW() WHERE id=$2',[status,id]);
   return getOrder(id,null,true);
+}
+
+export async function auditModerator({moderatorId,action,entityType,entityId,details={},ip,userAgent}) {
+  await pool.query(`
+    INSERT INTO moderator_audit_log(moderator_id,action,entity_type,entity_id,details,ip_address,user_agent)
+    VALUES($1,$2,$3,$4,$5::jsonb,$6,$7)
+  `,[moderatorId,action,entityType,String(entityId||''),JSON.stringify(details),ip,String(userAgent||'').slice(0,500)]);
 }
 
 export async function createReset(email) {

@@ -151,6 +151,31 @@ img { display: block; max-width: 100%; }
 .account > div:last-of-type { border-bottom: 1px solid var(--line); margin-bottom: 35px; }
 .account > div span { color: var(--muted); font-size: 11px; }
 .account > div strong { font-size: 12px; font-weight: 500; }
+.profile-message { padding: 14px 18px; background: var(--sage-pale); color: #42513f; }
+.profile-grid { margin: 40px 0; display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.profile-panel { padding: 30px; border: 1px solid var(--line); background: rgba(255,250,240,.55); }
+.profile-panel h2, .danger-zone h2 { margin: 0 0 20px; font: 26px Prata, serif; }
+.profile-panel > p { color: var(--muted); font-size: 12px; }
+.profile-panel form { display: grid; gap: 16px; }
+.profile-panel label { color: var(--muted); font-size: 9px; letter-spacing: .1em; text-transform: uppercase; }
+.profile-panel input { width: 100%; padding: 12px 0; border: 0; border-bottom: 1px solid var(--line); background: transparent; outline: 0; }
+.outline-action { width: fit-content; padding: 12px 18px; border: 1px solid var(--sage); background: transparent; color: #42513f; }
+.local-verification { margin-top: 18px; display: flex; gap: 12px; }
+.local-verification input { flex: 1; }
+.local-verification button { border: 0; background: var(--sage); color: white; padding: 10px 15px; }
+.addresses { margin: 0 0 45px; }
+.address-list { display: grid; grid-template-columns: repeat(2,1fr); gap: 12px; }
+.address-list article { padding: 18px; background: var(--ivory); display: flex; flex-direction: column; gap: 8px; }
+.address-list span, .address-list p { margin: 0; color: var(--muted); font-size: 11px; }
+.address-list button { width: fit-content; padding: 0 0 3px; border: 0; border-bottom: 1px solid; background: none; }
+.address-form { margin-top: 25px; grid-template-columns: repeat(4,1fr); }
+.address-form .check-field { display: flex; align-items: center; gap: 8px; }
+.address-form .check-field input { width: auto; }
+.danger-zone { margin: 50px 0; padding: 28px; border: 1px solid #cba99d; }
+.danger-zone p { color: var(--muted); }
+.danger-zone form { display: flex; gap: 12px; }
+.danger-zone input { flex: 1; padding: 12px; border: 1px solid var(--line); background: transparent; }
+.danger-zone button { padding: 12px 18px; border: 1px solid #a46759; background: transparent; color: #8a5145; }
 .order-history { margin: 45px 0; }
 .order-history h2 { font: 32px Prata, serif; }
 .order-history article { padding: 22px 0; border-top: 1px solid var(--line); display: grid; grid-template-columns: 1fr 1.5fr auto; gap: 24px; }
@@ -376,4 +401,7 @@ body { background: var(--ivory); }
   .footer-columns { min-height: 0; }
   .order-history article { grid-template-columns: 1fr; }
   .admin-orders article { flex-direction: column; }
+  .profile-grid, .address-list { grid-template-columns: 1fr; }
+  .address-form { grid-template-columns: 1fr 1fr; }
+  .danger-zone form, .local-verification { flex-direction: column; }
 }
