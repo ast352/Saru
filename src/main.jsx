@@ -89,8 +89,16 @@ function ProductPage({ product, user, add, go, openAuth }) {
   </main>;
 }
 
-function Cart({ cart, change, remove, go }) {
+function Cart({ cart, change, remove, go, user, onOrdered }) {
+  const [checkout,setCheckout]=useState(false);
+  const [busy,setBusy]=useState(false);
+  const [error,setError]=useState('');
   const total = cart.reduce((sum, i) => sum + i.price * i.qty, 0);
+  const order=async e=>{
+    e.preventDefault();setBusy(true);setError('');
+    try{const data=Object.fromEntries(new FormData(e.currentTarget));await api.createOrder(data);onOrdered();go('account')}
+    catch(err){setError(err.message)}finally{setBusy(false)}
+  };
   if (!cart.length) return <main className="empty-state"><h1>Корзина пуста</h1><button className="action compact" onClick={() => go('catalog')}>Перейти к товарам</button></main>;
   return <main className="shell cart"><header><h1>Корзина</h1></header><div className="cart-layout">
     <section>{cart.map(item => <article className="cart-line" key={`${item.id}-${item.size}`}>
@@ -98,7 +106,15 @@ function Cart({ cart, change, remove, go }) {
       <div className="cart-info"><h2>{item.name}</h2><p>{item.color} · {item.size}</p><div className="counter"><button onClick={() => change(item,-1)}><Icon name="minus" size={15}/></button><span>{item.qty}</span><button onClick={() => change(item,1)}><Icon name="plus" size={15}/></button></div></div>
       <div className="cart-end"><button onClick={() => remove(item)}><Icon name="close"/></button><strong>{money(item.price * item.qty)}</strong></div>
     </article>)}</section>
-    <aside className="total"><div><span>Итого</span><strong>{money(total)}</strong></div><p>Доставка рассчитывается на следующем шаге</p><button className="action" onClick={() => alert('Оплату подключим на следующем этапе.')}>Оформить заказ</button><small>Безопасная оплата появится в следующей версии</small></aside>
+    <aside className="total"><div><span>Итого</span><strong>{money(total)}</strong></div><p>Оплата появится позже. Сейчас заказ отправляется менеджеру.</p>{checkout?<form className="checkout" onSubmit={order}>
+      {error&&<p className="auth-error">{error}</p>}
+      <label>Получатель<input name="name" required defaultValue={user?.name}/></label>
+      <label>Телефон<input name="phone" required placeholder="+7 900 000-00-00"/></label>
+      <label>Почта<input name="email" type="email" required defaultValue={user?.email}/></label>
+      <label>Адрес<textarea name="address" required placeholder="Город, улица, дом, квартира"/></label>
+      <label>Комментарий<textarea name="comment" placeholder="Необязательно"/></label>
+      <button className="action" disabled={busy}>{busy?'Отправляем…':'Подтвердить заказ'}</button>
+    </form>:<button className="action" onClick={() => setCheckout(true)}>Оформить заказ</button>}</aside>
   </div></main>;
 }
 
@@ -140,26 +156,38 @@ function Auth({ message, close, onSession }) {
 }
 
 function Account({ user, go }) {
-  return <main className="shell account"><h1>{user?.name || 'Профиль'}</h1><div><span>Электронная почта</span><strong>{user?.email}</strong></div><div><span>Заказы</span><strong>Пока нет заказов</strong></div><button className="action compact" onClick={() => go('catalog')}>Смотреть товары</button></main>;
+  const [orders,setOrders]=useState([]);
+  useEffect(()=>{api.orders().then(x=>setOrders(x.orders)).catch(()=>{})},[]);
+  return <main className="shell account"><h1>{user?.name || 'Профиль'}</h1><div><span>Электронная почта</span><strong>{user?.email}</strong></div>
+    <section className="order-history"><h2>Заказы</h2>{orders.length?orders.map(o=><article key={o.id}><div><strong>Заказ №{o.id}</strong><span>{new Date(o.created_at).toLocaleDateString('ru-RU')}</span></div><div><span>{o.items.map(i=>`${i.name}, ${i.size} × ${i.quantity}`).join(' · ')}</span><b>{money(Number(o.total))}</b></div><i>{({new:'Новый',confirmed:'Подтверждён',shipped:'Отправлен',completed:'Завершён',cancelled:'Отменён'})[o.status]}</i></article>):<p>Пока нет заказов</p>}</section>
+    <button className="action compact" onClick={() => go('catalog')}>Смотреть товары</button></main>;
 }
 
 function Admin({ products, setProducts, user, go }) {
   const [edit, setEdit] = useState(null);
+  const [tab,setTab]=useState('products');
+  const [orders,setOrders]=useState([]);
   const [error, setError] = useState('');
+  useEffect(()=>{if(user?.role==='moderator')api.orders().then(x=>setOrders(x.orders)).catch(()=>{})},[user]);
   if (!user || user.role !== 'moderator') return <main className="empty-state"><h1>Закрытая зона</h1><p>Войдите как moderator@saru.ru</p><button className="action compact" onClick={() => go('home')}>На главную</button></main>;
   const save = async e => {
     e.preventDefault(); setError('');
     const d = new FormData(e.currentTarget);
-    const changed = {...edit,name:d.get('name'),price:+d.get('price'),color:d.get('color'),story:d.get('story')};
+    const variants=String(d.get('variants')).split(',').map(x=>{const [size,stock]=x.trim().split(':');return {size,stock:Number(stock)}}).filter(x=>x.size&&Number.isInteger(x.stock));
+    const changed = {...edit,name:d.get('name'),subtitle:d.get('subtitle'),price:+d.get('price'),color:d.get('color'),story:d.get('story'),material:d.get('material'),fit:d.get('fit'),published:d.get('published')==='on',variants};
     try {
-      const {product}=await api.saveProduct(changed);
-      setProducts(products.map(p => p.id===product.id?product:p)); setEdit(null);
+      const {product}=edit.id?await api.saveProduct(changed):await api.createProduct(changed);
+      setProducts(edit.id?products.map(p => p.id===product.id?product:p):[...products,product]); setEdit(product);
     } catch(err) { setError(err.message); }
   };
-  return <main className="admin"><aside><button className="logo" onClick={() => go('home')}>САРУ</button><nav><button className="active">Товары <b>{products.length}</b></button><button>Заказы <b>0</b></button></nav><button className="admin-exit" onClick={() => go('home')}><Icon name="back"/> На сайт</button></aside><section>
-    <header><h1>Товары</h1><button className="action compact" onClick={() => setEdit(products[0])}>Редактировать</button></header>
-    <div className="admin-list">{products.map(p => <article key={p.id}><div>{p.image ? <img src={p.image} alt=""/> : <Shirt product={p}/>}</div><strong>{p.name}</strong><span>{p.color}</span><span>{money(p.price)}</span><i>Опубликован</i><button onClick={() => setEdit(p)}><Icon name="edit"/></button></article>)}</div>
-  </section>{edit && <div className="modal"><button className="modal-air" onClick={() => setEdit(null)}/><form className="editor" onSubmit={save}><button type="button" className="round auth-close" onClick={() => setEdit(null)}><Icon name="close"/></button><h2>{edit.name}</h2>{error&&<p className="auth-error">{error}</p>}<label>Название<input name="name" defaultValue={edit.name}/></label><div><label>Цена<input name="price" type="number" defaultValue={edit.price}/></label><label>Цвет<input name="color" defaultValue={edit.color}/></label></div><label>Описание<textarea name="story" defaultValue={edit.story}/></label><button className="action">Сохранить</button></form></div>}</main>;
+  const blank={name:'Новая рубашка',subtitle:'',price:15000,color:'Слоновая кость',tone:'#eee8dc',accent:'#c4b49c',material:'100% хлопок',fit:'Прямая посадка',story:'',published:false,variants:[{size:'S',stock:0},{size:'M',stock:0},{size:'L',stock:0}]};
+  const removeProduct=async p=>{if(!confirm(`Удалить «${p.name}»?`))return;await api.deleteProduct(p.id);setProducts(products.filter(x=>x.id!==p.id))};
+  const upload=async e=>{const file=e.target.files[0];if(!file||!edit.id)return;try{const {product}=await api.uploadProductImage(edit.id,file);setEdit(product);setProducts(products.map(p=>p.id===product.id?product:p))}catch(err){setError(err.message)}};
+  const status=async(o,value)=>{const {order}=await api.updateOrder(o.id,value);setOrders(orders.map(x=>x.id===o.id?order:x))};
+  return <main className="admin"><aside><button className="logo" onClick={() => go('home')}>САРУ</button><nav><button className={tab==='products'?'active':''} onClick={()=>setTab('products')}>Товары <b>{products.length}</b></button><button className={tab==='orders'?'active':''} onClick={()=>setTab('orders')}>Заказы <b>{orders.length}</b></button></nav><button className="admin-exit" onClick={() => go('home')}><Icon name="back"/> На сайт</button></aside><section>
+    {tab==='products'?<><header><h1>Товары</h1><button className="action compact" onClick={() => setEdit(blank)}>Добавить товар</button></header>
+    <div className="admin-list">{products.map(p => <article key={p.id}><div>{p.image ? <img src={p.image} alt=""/> : <Shirt product={p}/>}</div><strong>{p.name}</strong><span>{p.variants.reduce((s,v)=>s+v.stock,0)} шт.</span><span>{money(p.price)}</span><i>{p.published?'Опубликован':'Черновик'}</i><button onClick={() => setEdit(p)}><Icon name="edit"/></button><button onClick={()=>removeProduct(p)}><Icon name="close"/></button></article>)}</div></>:<><header><h1>Заказы</h1></header><div className="admin-orders">{orders.map(o=><article key={o.id}><div><strong>№{o.id} · {o.customer_name}</strong><span>{o.phone} · {o.email}</span><small>{o.address}</small></div><div><b>{money(Number(o.total))}</b><select value={o.status} onChange={e=>status(o,e.target.value)}>{[['new','Новый'],['confirmed','Подтверждён'],['shipped','Отправлен'],['completed','Завершён'],['cancelled','Отменён']].map(([v,l])=><option value={v} key={v}>{l}</option>)}</select></div></article>)}</div></>}
+  </section>{edit && <div className="modal"><button className="modal-air" onClick={() => setEdit(null)}/><form className="editor" onSubmit={save}><button type="button" className="round auth-close" onClick={() => setEdit(null)}><Icon name="close"/></button><h2>{edit.id?'Карточка товара':'Новый товар'}</h2>{error&&<p className="auth-error">{error}</p>}<label>Название<input name="name" defaultValue={edit.name} required/></label><label>Подзаголовок<input name="subtitle" defaultValue={edit.subtitle}/></label><div><label>Цена<input name="price" type="number" defaultValue={edit.price} required/></label><label>Цвет<input name="color" defaultValue={edit.color}/></label></div><label>Размеры и остатки<input name="variants" defaultValue={edit.variants.map(v=>`${v.size}:${v.stock}`).join(', ')} placeholder="S:5, M:8, L:3"/></label><label>Состав<input name="material" defaultValue={edit.material}/></label><label>Посадка<input name="fit" defaultValue={edit.fit}/></label><label>Описание<textarea name="story" defaultValue={edit.story}/></label><label className="publish"><input name="published" type="checkbox" defaultChecked={edit.published}/> Опубликовать на сайте</label>{edit.id&&<label className="upload">Фотография<input type="file" accept="image/jpeg,image/png,image/webp" onChange={upload}/></label>}<button className="action">Сохранить</button></form></div>}</main>;
 }
 
 function Story() {
@@ -199,7 +227,7 @@ function App() {
     const props={products,go};
     if(route.name==='catalog') return <Catalog {...props}/>;
     if(route.name==='product') return <ProductPage product={products.find(p=>p.id===route.id)||products[0]} user={user} add={add} go={go} openAuth={m=>setAuth(m||true)}/>;
-    if(route.name==='cart') return <Cart cart={cart} change={change} remove={remove} go={go}/>;
+    if(route.name==='cart') return <Cart cart={cart} change={change} remove={remove} go={go} user={user} onOrdered={()=>setCart([])}/>;
     if(route.name==='account') return <Account user={user} go={go}/>;
     if(route.name==='admin') return <Admin products={products} setProducts={setProducts} user={user} go={go}/>;
     if(route.name==='story') return <Story/>;

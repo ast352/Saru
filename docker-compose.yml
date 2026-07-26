@@ -1,0 +1,46 @@
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: saru
+      POSTGRES_USER: saru
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-saru}
+    volumes:
+      - saru_postgres:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U saru -d saru"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://saru:${POSTGRES_PASSWORD:-saru}@db:5432/saru
+      API_HOST: 0.0.0.0
+      API_PORT: 8787
+      NODE_ENV: production
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:8787}
+      MODERATOR_EMAIL: ${MODERATOR_EMAIL:-moderator@saru.ru}
+      MODERATOR_PASSWORD: ${MODERATOR_PASSWORD:-SaruDemo2026!}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      MAIL_FROM: ${MAIL_FROM:-Saru <hello@saru.ru>}
+    volumes:
+      - saru_uploads:/app/uploads
+    ports:
+      - "8787:8787"
+
+volumes:
+  saru_postgres:
+  saru_uploads:
