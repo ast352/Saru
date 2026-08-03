@@ -43,7 +43,7 @@ function Home({ products, go }) {
 
     <section className="collection-intro">
       <span>Коллекция SARU</span>
-      <h1>Сорочки, в которых<br/>легко быть собой.</h1>
+      <h1><span>Сорочки, в которых</span><span>легко быть собой.</span></h1>
       <button className="link-arrow" onClick={() => go('catalog')}>Смотреть коллекцию <Icon name="arrow"/></button>
     </section>
 
