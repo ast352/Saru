@@ -23,7 +23,7 @@ button:disabled { cursor: wait; opacity: .65; }
 img { display: block; max-width: 100%; }
 .micro { font-size: 10px; letter-spacing: .18em; text-transform: uppercase; }
 .round { width: 42px; height: 42px; padding: 0; border: 0; background: transparent; display: grid; place-items: center; }
-.logo { border: 0; background: none; font-family: Prata, serif; font-size: 27px; letter-spacing: .24em; }
+.logo { border: 0; background: none; font-family: Prata, serif; font-size: 25px; letter-spacing: .3em; }
 .site-header { position: sticky; top: 0; z-index: 40; height: 76px; padding: 0 3vw; background: #f8f4ea; border-bottom: 1px solid var(--line); display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; }
 .site-header > .round { justify-self: start; }
 .header-tools { justify-self: end; display: flex; align-items: center; gap: 3px; }
@@ -100,7 +100,7 @@ img { display: block; max-width: 100%; }
 .action.done { background: var(--sage-light); border-color: var(--sage-light); }
 .action.compact { width: max-content; padding: 0 28px; }
 .login-note { display: block; margin: 12px 0 0; color: var(--muted); text-align: center; }
-.product-story { margin: 42px 0; font-size: 13px; line-height: 1.85; }
+.product-story { margin: 42px 0; max-width: 560px; color: #565c52; font: 15px/1.9 Georgia, serif; }
 .product-details details { border-top: 1px solid var(--line); }
 .product-details details:last-child { border-bottom: 1px solid var(--line); }
 .product-details summary { padding: 19px 0; list-style: none; display: flex; justify-content: space-between; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; }
@@ -310,6 +310,14 @@ body { background: var(--ivory); }
   object-position: center;
 }
 
+.home-hero .hero-photo video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  background: #b8aa98;
+}
+
 .featured {
   padding: 80px 0 105px;
   background: var(--sage-pale);
@@ -359,10 +367,28 @@ body { background: var(--ivory); }
 }
 
 .feature-rail::-webkit-scrollbar { display: none; }
-.feature-rail .feature-card { scroll-snap-align: start; }
+.feature-rail .feature-card {
+  scroll-snap-align: start;
+  border: 1px solid rgba(62, 76, 58, .12);
+  background: rgba(255, 250, 240, .72);
+  transition: transform .35s ease, box-shadow .35s ease;
+}
+.feature-rail .feature-card:hover { transform: translateY(-5px); box-shadow: 0 20px 45px rgba(67, 78, 63, .1); }
 .feature-rail .feature-image { background: #e9e1d4; }
-.feature-rail .feature-copy { padding-top: 18px; }
+.feature-rail .feature-copy { min-height: 100px; padding: 21px 20px 22px; align-items: start; }
+.feature-rail .feature-copy h3 { font-size: 21px; }
+.feature-rail .feature-copy p { max-width: 220px; font-size: 10px; line-height: 1.55; }
 .all-products { margin: 35px 3.5vw 0 auto; }
+
+.catalog { background: linear-gradient(180deg, var(--ivory) 0, #f1ebde 100%); }
+.catalog-grid { gap: 55px 20px; }
+.product-tile { border-bottom: 1px solid rgba(67, 62, 55, .2); }
+.product-tile > div { background: #e8e0d3; }
+.product-tile footer { min-height: 92px; padding: 20px 5px 24px; }
+.product-tile footer strong { font: 17px Prata, Georgia, serif; }
+.product-tile footer small { font-size: 10px; letter-spacing: .04em; }
+.product-details { background: rgba(255, 250, 240, .58); }
+.product-details .subtitle { line-height: 1.65; }
 
 .site-footer {
   padding-top: 65px;
@@ -386,6 +412,7 @@ body { background: var(--ivory); }
   }
 
   .home-hero .hero-photo img { object-position: 38% center; }
+  .home-hero .hero-photo video { object-position: 56% center; }
   .featured { padding: 55px 0 75px; }
   .collection-bar { margin: 0 16px 30px; }
   .collection-bar h2 { font-size: 45px; }
@@ -404,4 +431,9 @@ body { background: var(--ivory); }
   .profile-grid, .address-list { grid-template-columns: 1fr; }
   .address-form { grid-template-columns: 1fr 1fr; }
   .danger-zone form, .local-verification { flex-direction: column; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-hero .hero-photo video { display: none; }
+  .home-hero .hero-photo { background: #b8aa98 url('/media/saru-hero-poster.jpg') center / cover no-repeat; }
 }

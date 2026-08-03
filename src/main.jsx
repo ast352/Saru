@@ -10,7 +10,7 @@ function Header({ go, user, cartCount, openAuth, logout }) {
   return <>
     <header className="site-header">
       <button className="round" onClick={() => setOpen(true)} aria-label="Открыть меню"><Icon name="menu"/></button>
-      <button className="logo" onClick={() => go('home')}>САРУ</button>
+      <button className="logo" onClick={() => go('home')}>SARU</button>
       <div className="header-tools">
         {user && <button className="header-label" onClick={() => user.role === 'moderator' ? go('admin') : logout()}>{user.role === 'moderator' ? 'Управление' : 'Выйти'}</button>}
         <button className="round" onClick={user ? () => go(user.role === 'moderator' ? 'admin' : 'account') : openAuth}><Icon name="user"/></button>
@@ -32,7 +32,12 @@ function Home({ products, go }) {
   const move = direction => rail.current?.scrollBy({ left: direction * rail.current.clientWidth * .78, behavior: 'smooth' });
   return <main>
     <section className="home-hero">
-      <div className="hero-photo"><img src="/images/saru-hero-v2.jpg" alt="Место для будущего видео Сару"/></div>
+      <div className="hero-photo">
+        <video autoPlay muted loop playsInline preload="metadata" poster="/media/saru-hero-poster.jpg" aria-label="Атмосфера коллекции SARU">
+          <source src="/media/saru-hero.webm" type="video/webm"/>
+          <source src="/media/saru-hero.mp4" type="video/mp4"/>
+        </video>
+      </div>
     </section>
 
     <section className="featured">
@@ -202,14 +207,14 @@ function Admin({ products, setProducts, user, go }) {
   const removeProduct=async p=>{if(!confirm(`Удалить «${p.name}»?`))return;await api.deleteProduct(p.id);setProducts(products.filter(x=>x.id!==p.id))};
   const upload=async e=>{const file=e.target.files[0];if(!file||!edit.id)return;try{const {product}=await api.uploadProductImage(edit.id,file);setEdit(product);setProducts(products.map(p=>p.id===product.id?product:p))}catch(err){setError(err.message)}};
   const status=async(o,value)=>{const {order}=await api.updateOrder(o.id,value);setOrders(orders.map(x=>x.id===o.id?order:x))};
-  return <main className="admin"><aside><button className="logo" onClick={() => go('home')}>САРУ</button><nav><button className={tab==='products'?'active':''} onClick={()=>setTab('products')}>Товары <b>{products.length}</b></button><button className={tab==='orders'?'active':''} onClick={()=>setTab('orders')}>Заказы <b>{orders.length}</b></button></nav><button className="admin-exit" onClick={() => go('home')}><Icon name="back"/> На сайт</button></aside><section>
+  return <main className="admin"><aside><button className="logo" onClick={() => go('home')}>SARU</button><nav><button className={tab==='products'?'active':''} onClick={()=>setTab('products')}>Товары <b>{products.length}</b></button><button className={tab==='orders'?'active':''} onClick={()=>setTab('orders')}>Заказы <b>{orders.length}</b></button></nav><button className="admin-exit" onClick={() => go('home')}><Icon name="back"/> На сайт</button></aside><section>
     {tab==='products'?<><header><h1>Товары</h1><button className="action compact" onClick={() => setEdit(blank)}>Добавить товар</button></header>
     <div className="admin-list">{products.map(p => <article key={p.id}><div>{p.image ? <img src={p.image} alt=""/> : <Shirt product={p}/>}</div><strong>{p.name}</strong><span>{p.variants.reduce((s,v)=>s+v.stock,0)} шт.</span><span>{money(p.price)}</span><i>{p.published?'Опубликован':'Черновик'}</i><button onClick={() => setEdit(p)}><Icon name="edit"/></button><button onClick={()=>removeProduct(p)}><Icon name="close"/></button></article>)}</div></>:<><header><h1>Заказы</h1></header><div className="admin-orders">{orders.map(o=><article key={o.id}><div><strong>№{o.id} · {o.customer_name}</strong><span>{o.phone} · {o.email}</span><small>{o.address}</small></div><div><b>{money(Number(o.total))}</b><select value={o.status} onChange={e=>status(o,e.target.value)}>{[['new','Новый'],['confirmed','Подтверждён'],['shipped','Отправлен'],['completed','Завершён'],['cancelled','Отменён']].map(([v,l])=><option value={v} key={v}>{l}</option>)}</select></div></article>)}</div></>}
   </section>{edit && <div className="modal"><button className="modal-air" onClick={() => setEdit(null)}/><form className="editor" onSubmit={save}><button type="button" className="round auth-close" onClick={() => setEdit(null)}><Icon name="close"/></button><h2>{edit.id?'Карточка товара':'Новый товар'}</h2>{error&&<p className="auth-error">{error}</p>}<label>Название<input name="name" defaultValue={edit.name} required/></label><label>Подзаголовок<input name="subtitle" defaultValue={edit.subtitle}/></label><div><label>Цена<input name="price" type="number" defaultValue={edit.price} required/></label><label>Цвет<input name="color" defaultValue={edit.color}/></label></div><label>Размеры и остатки<input name="variants" defaultValue={edit.variants.map(v=>`${v.size}:${v.stock}`).join(', ')} placeholder="S:5, M:8, L:3"/></label><label>Состав<input name="material" defaultValue={edit.material}/></label><label>Посадка<input name="fit" defaultValue={edit.fit}/></label><label>Описание<textarea name="story" defaultValue={edit.story}/></label><label className="publish"><input name="published" type="checkbox" defaultChecked={edit.published}/> Опубликовать на сайте</label>{edit.id&&<label className="upload">Фотография<input type="file" accept="image/jpeg,image/png,image/webp" onChange={upload}/></label>}<button className="action">Сохранить</button></form></div>}</main>;
 }
 
 function Story() {
-  return <main className="story"><header><h1>Меньше шума.<br/>Больше ощущения.</h1></header><section><p>Нам близки вещи, которые оставляют пространство для собственного голоса.</p><p>В основе Сару — точная конструкция, натуральные материалы и спокойные оттенки.</p></section></main>;
+  return <main className="story"><header><h1>Меньше шума.<br/>Больше ощущения.</h1></header><section><p>Нам близки вещи, которые оставляют пространство для собственного голоса.</p><p>В основе SARU — точная конструкция, натуральные материалы и спокойные оттенки.</p></section></main>;
 }
 
 function Footer({ go }) {
@@ -258,7 +263,7 @@ function App() {
     if(route.name==='story') return <Story/>;
     return <Home {...props}/>;
   },[route,products,cart,user]);
-  if(!ready) return <div className="boot">САРУ</div>;
+  if(!ready) return <div className="boot">SARU</div>;
   return <><Header go={go} user={user} cartCount={cart.reduce((s,i)=>s+i.qty,0)} openAuth={()=>setAuth(true)} logout={logout}/>{notice&&<button className="notice" onClick={()=>setNotice('')}>{notice}<Icon name="close" size={15}/></button>}{page}{route.name!=='admin'&&<Footer go={go}/>} {auth&&<Auth message={typeof auth==='string'?auth:null} close={()=>setAuth(null)} onSession={onSession}/>}</>;
 }
 
