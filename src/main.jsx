@@ -113,27 +113,32 @@ function Cart({ cart, change, remove, go, user, onOrdered }) {
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState('');
   const total = cart.reduce((sum, i) => sum + i.price * i.qty, 0);
+  const count = cart.reduce((sum, item) => sum + item.qty, 0);
+  const countLabel = count % 10 === 1 && count % 100 !== 11 ? 'товар' : count % 10 >= 2 && count % 10 <= 4 && (count % 100 < 12 || count % 100 > 14) ? 'товара' : 'товаров';
   const order=async e=>{
     e.preventDefault();setBusy(true);setError('');
     try{const data=Object.fromEntries(new FormData(e.currentTarget));await api.createOrder(data);onOrdered();go('account')}
     catch(err){setError(err.message)}finally{setBusy(false)}
   };
-  if (!cart.length) return <main className="empty-state"><h1>Корзина пуста</h1><button className="action compact" onClick={() => go('catalog')}>Перейти к товарам</button></main>;
-  return <main className="shell cart"><header><h1>Корзина</h1></header><div className="cart-layout">
+  if (!cart.length) return <main className="empty-state cart-empty"><span className="micro">Ваш выбор</span><div className="empty-bag"><Icon name="bag" size={30}/></div><h1>Корзина пуста</h1><p>Выберите сорочку — мы сохраним её здесь.</p><button className="action compact" onClick={() => go('catalog')}>Смотреть коллекцию</button></main>;
+  return <main className="shell cart"><header><div><span className="micro">Ваш выбор</span><h1>Корзина</h1></div><p>{count} {countLabel}</p></header>
+    <nav className="cart-steps" aria-label="Этапы оформления"><span className="active"><i>01</i> Корзина</span><span className={checkout?'active':''}><i>02</i> Доставка</span><span><i>03</i> Подтверждение</span></nav>
+    <div className="cart-layout">
     <section>{cart.map(item => <article className="cart-line" key={`${item.id}-${item.size}`}>
       <div className="cart-image">{item.image ? <img src={item.image} alt={item.name}/> : <Shirt product={item}/>}</div>
-      <div className="cart-info"><h2>{item.name}</h2><p>{item.color} · {item.size}</p><div className="counter"><button onClick={() => change(item,-1)}><Icon name="minus" size={15}/></button><span>{item.qty}</span><button onClick={() => change(item,1)}><Icon name="plus" size={15}/></button></div></div>
-      <div className="cart-end"><button onClick={() => remove(item)}><Icon name="close"/></button><strong>{money(item.price * item.qty)}</strong></div>
+      <div className="cart-info"><span className="micro">Сорочка SARU</span><h2>{item.name}</h2><p>{item.color} · Размер {item.size}</p><div className="counter" aria-label="Количество"><button aria-label="Уменьшить количество" onClick={() => change(item,-1)}><Icon name="minus" size={15}/></button><span>{item.qty}</span><button aria-label="Увеличить количество" onClick={() => change(item,1)}><Icon name="plus" size={15}/></button></div></div>
+      <div className="cart-end"><button aria-label={`Удалить ${item.name}`} onClick={() => remove(item)}><Icon name="close"/></button><strong>{money(item.price * item.qty)}</strong></div>
     </article>)}</section>
-    <aside className="total"><div><span>Итого</span><strong>{money(total)}</strong></div><p>Оплата появится позже. Сейчас заказ отправляется менеджеру.</p>{checkout?<form className="checkout" onSubmit={order}>
+    <aside className="total"><span className="micro">Ваш заказ</span><h2>Итого</h2><dl><div><dt>Товары · {count}</dt><dd>{money(total)}</dd></div><div><dt>Доставка</dt><dd>Рассчитаем позже</dd></div></dl><div className="total-sum"><span>К оплате</span><strong>{money(total)}</strong></div>
+      {checkout?<form className="checkout" onSubmit={order}><div className="checkout-title"><span className="micro">Шаг 02</span><h3>Куда доставить?</h3></div>
       {error&&<p className="auth-error">{error}</p>}
       <label>Получатель<input name="name" required defaultValue={user?.name}/></label>
       <label>Телефон<input name="phone" required placeholder="+7 900 000-00-00"/></label>
       <label>Почта<input name="email" type="email" required defaultValue={user?.email}/></label>
       <label>Адрес<textarea name="address" required placeholder="Город, улица, дом, квартира"/></label>
       <label>Комментарий<textarea name="comment" placeholder="Необязательно"/></label>
-      <button className="action" disabled={busy}>{busy?'Отправляем…':'Подтвердить заказ'}</button>
-    </form>:<button className="action" onClick={() => setCheckout(true)}>Оформить заказ</button>}</aside>
+      <button className="action" disabled={busy}>{busy?'Отправляем…':'Подтвердить заказ'}</button><button type="button" className="text-action" onClick={() => setCheckout(false)}>Вернуться к корзине</button>
+    </form>:<><p className="total-note">Оплата появится позже. Сейчас заказ отправляется менеджеру для подтверждения.</p><button className="action" onClick={() => setCheckout(true)}>Перейти к оформлению</button><button className="text-action" onClick={() => go('catalog')}>Продолжить покупки</button></>}</aside>
   </div></main>;
 }
 
@@ -160,17 +165,24 @@ function Auth({ message, close, onSession }) {
     } catch (err) { setError(err.message); }
     finally { setBusy(false); }
   };
-  return <div className="modal"><button className="modal-air" onClick={close}/><section className="auth">
-    <button className="round auth-close" onClick={close}><Icon name="close"/></button>
-    <h2>{mode === 'register' ? 'Новый профиль' : mode === 'reset' ? 'Вернуть доступ' : mode === 'resetConfirm' ? 'Новый пароль' : 'С возвращением'}</h2>{message && <p className="auth-message">{message}</p>}{error && <p className="auth-error">{error}</p>}
+  const title = mode === 'register' ? 'Создайте профиль' : mode === 'reset' ? 'Вернём доступ' : mode === 'resetConfirm' ? 'Новый пароль' : 'С возвращением';
+  const lead = mode === 'register' ? 'Один профиль — для покупок, адресов и истории заказов.' : mode === 'reset' ? 'Укажите почту — мы подготовим одноразовый код.' : mode === 'resetConfirm' ? 'Введите код и придумайте новый надёжный пароль.' : 'Войдите, чтобы продолжить покупки и вернуться к выбранным сорочкам.';
+  return <div className="modal"><button className="modal-air" aria-label="Закрыть" onClick={close}/><section className="auth">
+    <button className="round auth-close" aria-label="Закрыть" onClick={close}><Icon name="close"/></button>
+    <div className="auth-brand"><strong>SARU</strong><span>Личный кабинет</span></div>
+    {(mode === 'login' || mode === 'register') && <div className="auth-tabs"><button className={mode==='login'?'active':''} onClick={() => {setMode('login');setError('')}}>Вход</button><button className={mode==='register'?'active':''} onClick={() => {setMode('register');setError('')}}>Регистрация</button></div>}
+    <div className="auth-heading"><span className="micro">{mode === 'register' ? 'Добро пожаловать' : mode === 'login' ? 'Рады видеть вас' : 'Восстановление'}</span><h2>{title}</h2><p>{lead}</p></div>
+    {message && <p className="auth-message">{message}</p>}{error && <p className="auth-error">{error}</p>}
+    {mode === 'register' && <div className="auth-benefits"><span><Icon name="check" size={14}/> Корзина сохраняется</span><span><Icon name="check" size={14}/> История заказов</span><span><Icon name="check" size={14}/> Адреса доставки</span></div>}
     <form onSubmit={submit}>
       {mode === 'register' && <label>Имя<input name="name" required placeholder="Как к вам обращаться"/></label>}
       {mode !== 'resetConfirm' && <label>Почта<input name="email" type="email" required placeholder="name@example.ru"/></label>}
       {mode === 'resetConfirm' && <label>Код восстановления<input name="token" required defaultValue={devToken} placeholder="Код из письма"/></label>}
       {mode !== 'reset' && <label>Пароль<input name="password" type="password" minLength="10" maxLength="128" required placeholder="Минимум 10 символов"/></label>}
       <button className="action" disabled={busy}>{busy ? 'Подождите…' : mode === 'register' ? 'Создать профиль' : mode === 'reset' ? 'Получить код' : mode === 'resetConfirm' ? 'Сохранить пароль' : 'Войти'}</button>
+      {mode === 'register' && <small className="auth-consent">Создавая профиль, вы соглашаетесь с политикой обработки персональных данных.</small>}
     </form>
-    <div className="auth-switch">{mode === 'login' ? <><button onClick={() => setMode('reset')}>Забыли пароль?</button><button onClick={() => setMode('register')}>Создать профиль</button></> : <button onClick={() => setMode('login')}>Вернуться ко входу</button>}</div>
+    <div className="auth-switch">{mode === 'login' ? <button onClick={() => setMode('reset')}>Забыли пароль?</button> : mode !== 'register' && <button onClick={() => setMode('login')}>Вернуться ко входу</button>}</div>
   </section></div>;
 }
 
