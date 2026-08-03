@@ -9,18 +9,19 @@ function Header({ go, user, cartCount, openAuth, logout }) {
   const [open, setOpen] = useState(false);
   return <>
     <header className="site-header">
-      <button className="round" onClick={() => setOpen(true)} aria-label="Открыть меню"><Icon name="menu"/></button>
+      <button className="header-menu" onClick={() => setOpen(true)} aria-label="Открыть меню"><Icon name="menu"/><span>Меню</span></button>
       <button className="logo" onClick={() => go('home')}>SARU</button>
       <div className="header-tools">
-        {user && <button className="header-label" onClick={() => user.role === 'moderator' ? go('admin') : logout()}>{user.role === 'moderator' ? 'Управление' : 'Выйти'}</button>}
-        <button className="round" onClick={user ? () => go(user.role === 'moderator' ? 'admin' : 'account') : openAuth}><Icon name="user"/></button>
-        <button className="round bag" onClick={() => go('cart')}><Icon name="bag"/>{cartCount > 0 && <i>{cartCount}</i>}</button>
+        <button className="header-shop" onClick={() => go('catalog')}>Сорочки</button>
+        <button className="header-tool" onClick={user ? () => go(user.role === 'moderator' ? 'admin' : 'account') : openAuth}><Icon name="user"/><span>{user?.role === 'moderator' ? 'Управление' : user ? 'Профиль' : 'Войти'}</span></button>
+        <button className="header-tool bag" onClick={() => go('cart')}><Icon name="bag"/><span>Корзина</span>{cartCount > 0 && <i>{cartCount}</i>}</button>
       </div>
     </header>
     {open && <div className="nav-layer">
       <div className="nav-panel">
         <button className="round nav-close" onClick={() => setOpen(false)}><Icon name="close"/></button>
-        <nav>{[['home','Главная'],['catalog','Товары'],['story','О бренде'],['cart','Корзина']].map(([r,l],i) => <button key={r} onClick={() => {go(r);setOpen(false)}}><small>0{i+1}</small>{l}<Icon name="arrow"/></button>)}</nav>
+        <nav>{[['home','Главная'],['catalog','Сорочки'],['story','О бренде'],['cart','Корзина']].map(([r,l],i) => <button key={r} onClick={() => {go(r);setOpen(false)}}><small>0{i+1}</small>{l}<Icon name="arrow"/></button>)}</nav>
+        <div className="nav-account">{user?<><span>{user.email}</span><button onClick={() => {logout();setOpen(false)}}>Выйти из профиля</button></>:<button onClick={() => {openAuth();setOpen(false)}}>Войти или зарегистрироваться</button>}</div>
       </div>
       <button className="nav-blank" aria-label="Закрыть" onClick={() => setOpen(false)}/>
     </div>}
@@ -40,11 +41,17 @@ function Home({ products, go }) {
       </div>
     </section>
 
+    <section className="collection-intro">
+      <span>Коллекция SARU</span>
+      <h1>Сорочки, в которых<br/>легко быть собой.</h1>
+      <button className="link-arrow" onClick={() => go('catalog')}>Смотреть коллекцию <Icon name="arrow"/></button>
+    </section>
+
     <section className="featured">
-      <div className="collection-bar"><h2>Рубашки</h2><div className="rail-actions"><button onClick={() => move(-1)} aria-label="Назад"><Icon name="back"/></button><button onClick={() => move(1)} aria-label="Вперёд"><Icon name="arrow"/></button></div></div>
-      <div className="feature-rail" ref={rail}>{products.map((p, i) => <article className="feature-card" key={p.id} onClick={() => go('product', p.id)}>
+      <div className="collection-bar"><div><span>Избранные модели</span><h2>Сорочки</h2></div><div className="rail-actions"><button onClick={() => move(-1)} aria-label="Назад"><Icon name="back"/></button><button onClick={() => move(1)} aria-label="Вперёд"><Icon name="arrow"/></button></div></div>
+      <div className="feature-rail" ref={rail}>{products.map((p, i) => <article className="feature-card" key={p.id} onClick={() => go('product', p.id)} tabIndex="0" onKeyDown={e=>e.key==='Enter'&&go('product',p.id)}>
         <div className="feature-image">{p.image ? <img src={p.image} alt={p.name}/> : <Shirt product={p}/>}<span>{String(i+1).padStart(2,'0')}</span></div>
-        <div className="feature-copy"><div><h3>{p.name}</h3><p>{p.subtitle}</p></div><strong>{money(p.price)}</strong></div>
+        <div className="feature-copy"><div><small>{p.color}</small><h3>{p.name}</h3><p>{p.subtitle}</p></div><strong>{money(p.price)}</strong></div>
       </article>)}</div>
       <button className="link-arrow all-products" onClick={() => go('catalog')}>Смотреть все <Icon name="arrow"/></button>
     </section>
@@ -56,7 +63,7 @@ function Catalog({ products, go }) {
   const colors = ['Все', ...new Set(products.map(p => p.color))];
   const shown = color === 'Все' ? products : products.filter(p => p.color === color);
   return <main className="shell catalog">
-    <header className="catalog-head"><h1>Рубашки</h1><p>{shown.length} моделей</p></header>
+    <header className="catalog-head"><span className="micro">Коллекция SARU</span><h1>Сорочки</h1><p>{shown.length} моделей</p></header>
     <div className="filter-row">{colors.map(c => <button className={c === color ? 'active' : ''} onClick={() => setColor(c)} key={c}>{c}</button>)}</div>
     <div className="catalog-grid">{shown.map(p => <ProductTile key={p.id} product={p} go={go}/>)}</div>
   </main>;
@@ -65,16 +72,19 @@ function Catalog({ products, go }) {
 function ProductTile({ product, go }) {
   return <article className="product-tile" onClick={() => go('product', product.id)}>
     <div>{product.image ? <img src={product.image} alt={product.name}/> : <Shirt product={product}/>}<button aria-label="Открыть"><Icon name="arrow"/></button></div>
-    <footer><span><strong>{product.name}</strong><small>{product.color}</small></span><b>{money(product.price)}</b></footer>
+    <footer><span><small>{product.color}</small><strong>{product.name}</strong><em>{product.subtitle}</em></span><b>{money(product.price)}</b></footer>
   </article>;
 }
 
 function ProductPage({ product, user, add, go, openAuth }) {
-  const [size, setSize] = useState(product.sizes[0]);
+  const variants=product.variants?.length?product.variants:product.sizes.map(size=>({size,stock:1}));
+  const firstAvailable=variants.find(v=>v.stock>0)?.size||'';
+  const [size, setSize] = useState(firstAvailable);
   const [done, setDone] = useState(false);
-  const buy = () => {
+  useEffect(()=>{setSize(firstAvailable);setDone(false)},[product.id]);
+  const buy = async () => {
     if (!user) return openAuth('Войдите или создайте профиль, чтобы добавить рубашку в корзину.');
-    add(product, size); setDone(true); setTimeout(() => setDone(false), 1600);
+    const added=await add(product, size); if(added)setDone(true);
   };
   return <main className="product-view">
     <div className="product-visual">
@@ -82,10 +92,14 @@ function ProductPage({ product, user, add, go, openAuth }) {
       {product.image ? <img src={product.image} alt={product.name}/> : <Shirt product={product}/>}
     </div>
     <aside className="product-details">
-      <h1>{product.name}</h1><p className="subtitle">{product.subtitle} · {product.color}</p><strong className="price">{money(product.price)}</strong>
+      <button className="product-breadcrumb" onClick={() => go('catalog')}>Сорочки / {product.color}</button>
+      <h1>{product.name}</h1><p className="subtitle">{product.subtitle}</p><strong className="price">{money(product.price)}</strong>
+      <div className="product-color"><span style={{background:product.tone}}/><div><small>Цвет</small><strong>{product.color}</strong></div></div>
       <div className="size-head"><span>Выберите размер</span><button>Таблица размеров</button></div>
-      <div className="size-list">{product.sizes.map(s => <button className={s === size ? 'active' : ''} onClick={() => setSize(s)} key={s}>{s}</button>)}</div>
-      <button className={`action ${done ? 'done' : ''}`} onClick={buy}>{done ? <><Icon name="check"/> Добавлено</> : 'Добавить в корзину'}</button>
+      <div className="size-list">{variants.map(v => <button className={v.size === size ? 'active' : ''} disabled={!v.stock} onClick={() => {setSize(v.size);setDone(false)}} key={v.size}>{v.size}</button>)}</div>
+      <small className="stock-note">{firstAvailable?'В наличии · отправим в течение 1–2 дней':'Нет в наличии'}</small>
+      <button className={`action ${done ? 'done' : ''}`} disabled={!size} onClick={buy}>{done ? <><Icon name="check"/> Добавлено в корзину</> : firstAvailable?'Добавить в корзину':'Нет в наличии'}</button>
+      {done&&<div className="added-panel"><span>Сорочка ждёт вас в корзине</span><div><button onClick={() => go('cart')}>Перейти в корзину</button><button onClick={() => setDone(false)}>Продолжить покупки</button></div></div>}
       {!user && <small className="login-note">Добавление доступно после регистрации</small>}
       <p className="product-story">{product.story}</p>
       <details open><summary>Состав и посадка <Icon name="plus"/></summary><p>{product.material}<br/>{product.fit}<br/>Сделано в России</p></details>
@@ -247,8 +261,8 @@ function App() {
   const onSession = session => { setUser(session.user); setCart(session.cart||[]); api.products().then(x=>setProducts(x.products)); };
   const logout = async () => { await api.logout(); setUser(null); setCart([]); if(route.name==='admin'||route.name==='account') go('home'); };
   const updateCart = async (p,size,quantity) => {
-    try { const result=await api.setCartItem({productId:p.id,size,quantity}); setCart(result.cart); }
-    catch(err) { setNotice(err.message); }
+    try { const result=await api.setCartItem({productId:p.id,size,quantity}); setCart(result.cart); return true; }
+    catch(err) { setNotice(err.message); return false; }
   };
   const add = (p,size) => { const x=cart.find(i=>i.id===p.id&&i.size===size); return updateCart(p,size,(x?.qty||0)+1); };
   const change = (item,n) => updateCart(item,item.size,item.qty+n);
