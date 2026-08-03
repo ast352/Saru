@@ -36,7 +36,7 @@ services:
       SMTP_SECURE: ${SMTP_SECURE:-false}
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
-      MAIL_FROM: ${MAIL_FROM:-Saru <hello@saru.ru>}
+      MAIL_FROM: ${MAIL_FROM:-SARU <hello@saru.ru>}
     volumes:
       - saru_uploads:/app/uploads
     ports:
