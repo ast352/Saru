@@ -47,6 +47,7 @@ export async function initDb() {
     ['003_customer_profile.sql',resolve(root,'server/migrations/003_customer_profile.sql')],
     ['004_refresh_seed_products.sql',resolve(root,'server/migrations/004_refresh_seed_products.sql')],
     ['005_add_product_photos.sql',resolve(root,'server/migrations/005_add_product_photos.sql')],
+    ['006_update_sample_catalog.sql',resolve(root,'server/migrations/006_update_sample_catalog.sql')],
   ];
   for(const [name,path] of migrations){
     const applied=await pool.query('SELECT 1 FROM schema_migrations WHERE name=$1',[name]);

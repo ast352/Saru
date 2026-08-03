@@ -56,7 +56,19 @@ const readBody=req=>new Promise((resolveBody,reject)=>{
 });
 const sessionCookie=(token,maxAge=2592000)=>`saru_session=${encodeURIComponent(token||'')}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${process.env.NODE_ENV==='production'?'; Secure':''}`;
 const cleanUser=user=>user&&({id:Number(user.id),name:user.name,email:user.email,role:user.role,emailVerified:Boolean(user.emailVerified??user.email_verified),createdAt:user.createdAt??user.created_at});
-const validateProduct=body=>body?.name&&Number.isInteger(body.price)&&Array.isArray(body.variants)&&body.variants.every(v=>v.size&&Number.isInteger(Number(v.stock)));
+const validateProduct=body=>{
+  if(!body||typeof body.name!=='string'||!body.name.trim()||body.name.length>160)return false;
+  if(!Number.isInteger(body.price)||body.price<0||body.price>100_000_000)return false;
+  for(const [field,max] of [['subtitle',240],['color',80],['material',180],['fit',120],['story',2000]])if(typeof (body[field]??'')!=='string'||String(body[field]??'').length>max)return false;
+  if(!/^#[0-9a-f]{6}$/i.test(body.tone||'')||!/^#[0-9a-f]{6}$/i.test(body.accent||''))return false;
+  if(!Array.isArray(body.variants)||!body.variants.length||body.variants.length>20)return false;
+  const sizes=new Set();
+  return body.variants.every(v=>{
+    const size=String(v?.size||'').trim(),stock=Number(v?.stock);
+    if(!/^[\p{L}\p{N} .+\/-]{1,24}$/u.test(size)||sizes.has(size)||!Number.isInteger(stock)||stock<0||stock>1_000_000)return false;
+    sizes.add(size);return true;
+  });
+};
 const validAddress=body=>{
   const fields=['label','recipientName','phone','city','street','house'];
   return fields.every(key=>typeof body?.[key]==='string'&&body[key].trim()&&body[key].length<=120)
