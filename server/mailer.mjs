@@ -44,3 +44,23 @@ export async function sendEmailVerification({email,name,token}) {
   });
   return true;
 }
+
+const money=value=>`${new Intl.NumberFormat('ru-RU').format(Number(value))} ₽`;
+const orderRows=order=>order.items.map(item=>`<tr><td style="padding:10px 0;border-bottom:1px solid #e3ddd2">${escapeHtml(item.name)}<br><small>Размер ${escapeHtml(item.size)} · ${Number(item.quantity)} шт.</small></td><td style="padding:10px 0;border-bottom:1px solid #e3ddd2;text-align:right">${money(Number(item.price)*Number(item.quantity))}</td></tr>`).join('');
+
+export async function sendOrderCreated({order}) {
+  if(!transport){console.log(`Новый заказ №${order.id} для ${order.email}`);return false}
+  const content=`<p>Здравствуйте, ${escapeHtml(order.customer_name)}. Заказ №${order.id} принят.</p><table style="width:100%;border-collapse:collapse">${orderRows(order)}</table><p style="font-size:20px">Итого: ${money(order.total)}</p><p>Доставка: ${escapeHtml(order.address)}</p><p>Менеджер свяжется с вами для подтверждения.</p>`;
+  const customerMail=transport.sendMail({from:process.env.MAIL_FROM||'SARU <no-reply@saru.ru>',to:order.email,subject:`Заказ №${order.id} принят — SARU`,text:`Заказ №${order.id} принят. Итого: ${money(order.total)}. Менеджер свяжется с вами для подтверждения.`,html:shell(`Заказ №${order.id} принят`,content)});
+  const moderatorEmail=process.env.MODERATOR_EMAIL||'moderator@saru.ru';
+  const moderatorMail=transport.sendMail({from:process.env.MAIL_FROM||'SARU <no-reply@saru.ru>',to:moderatorEmail,subject:`Новый заказ №${order.id} — SARU`,text:`Новый заказ №${order.id}: ${order.customer_name}, ${order.phone}, ${money(order.total)}.`,html:shell(`Новый заказ №${order.id}`,`<p>${escapeHtml(order.customer_name)} · ${escapeHtml(order.phone)}</p><p>${escapeHtml(order.email)}</p><table style="width:100%;border-collapse:collapse">${orderRows(order)}</table><p style="font-size:20px">Итого: ${money(order.total)}</p><p>${escapeHtml(order.address)}</p>`)});
+  await Promise.all([customerMail,moderatorMail]);return true;
+}
+
+export async function sendOrderStatus({order}) {
+  if(!transport)return false;
+  const names={confirmed:'подтверждён',shipped:'отправлен',completed:'завершён',cancelled:'отменён',new:'создан'};
+  const label=names[order.status]||order.status;
+  await transport.sendMail({from:process.env.MAIL_FROM||'SARU <no-reply@saru.ru>',to:order.email,subject:`Заказ №${order.id} ${label} — SARU`,text:`Статус заказа №${order.id}: ${label}.`,html:shell(`Заказ №${order.id} ${escapeHtml(label)}`,`<p>Здравствуйте, ${escapeHtml(order.customer_name)}.</p><p>Статус вашего заказа изменён: <strong>${escapeHtml(label)}</strong>.</p>`) });
+  return true;
+}

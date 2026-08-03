@@ -10,7 +10,7 @@ import {
   deleteSession, findUserWithPassword, getCart, initDb, listAddresses, listOrders, listProducts, saveAddress,
   saveProduct, setCartItem, updateOrderStatus, updateProfileName, userFromSession, verifyEmailToken, verifyPassword,
 } from './db.mjs';
-import { sendEmailVerification, sendPasswordReset } from './mailer.mjs';
+import { sendEmailVerification, sendOrderCreated, sendOrderStatus, sendPasswordReset } from './mailer.mjs';
 
 const PORT=Number(process.env.API_PORT||8787);
 const HOST=process.env.API_HOST||'127.0.0.1';
@@ -73,6 +73,13 @@ const validAddress=body=>{
   const fields=['label','recipientName','phone','city','street','house'];
   return fields.every(key=>typeof body?.[key]==='string'&&body[key].trim()&&body[key].length<=120)
     && String(body.apartment||'').length<=40&&String(body.postalCode||'').length<=20;
+};
+const validOrder=body=>{
+  if(!body||String(body.comment||'').length>1000)return false;
+  if(body.addressId!==undefined)return Number.isInteger(body.addressId)&&body.addressId>0;
+  return typeof body.name==='string'&&body.name.trim()&&body.name.length<=120
+    &&typeof body.phone==='string'&&body.phone.trim()&&body.phone.length<=40
+    &&typeof body.address==='string'&&body.address.trim()&&body.address.length<=500;
 };
 
 const receiveImage=(req,productId)=>new Promise((resolveUpload,reject)=>{
@@ -238,8 +245,10 @@ const server=createServer(async(req,res)=>{
     if(url.pathname==='/api/orders'&&req.method==='GET'){if(!requireUser())return;return json(res,200,{orders:await listOrders(user.id,user.role==='moderator')})}
     if(url.pathname==='/api/orders'&&req.method==='POST'){
       if(!requireUser())return;const body=await readBody(req);
-      if(!body.name||!body.phone||!body.email?.includes('@')||!body.address)return json(res,400,{error:'Заполните имя, телефон, почту и адрес'});
-      return json(res,201,{order:await createOrder(user.id,body),cart:[]});
+      if(!validOrder(body))return json(res,400,{error:'Проверьте получателя, телефон и адрес'});
+      const order=await createOrder(user.id,body);
+      await sendOrderCreated({order}).catch(error=>console.error('Не удалось отправить уведомление о заказе',error));
+      return json(res,201,{order,cart:[]});
     }
 
     const orderMatch=url.pathname.match(/^\/api\/orders\/(\d+)\/status$/);
@@ -247,6 +256,7 @@ const server=createServer(async(req,res)=>{
       if(!requireModerator())return;const {status}=await readBody(req);
       const order=await updateOrderStatus(Number(orderMatch[1]),status);
       await auditModerator({moderatorId:user.id,action:'order.status_changed',entityType:'order',entityId:orderMatch[1],details:{status},ip,userAgent:req.headers['user-agent']});
+      await sendOrderStatus({order}).catch(error=>console.error('Не удалось отправить статус заказа',error));
       return json(res,200,{order});
     }
 

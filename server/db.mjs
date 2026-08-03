@@ -310,19 +310,30 @@ export async function createOrder(userId,data) {
   const client=await pool.connect();
   try {
     await client.query('BEGIN');
+    const {rows:[customer]}=await client.query('SELECT email FROM users WHERE id=$1 FOR SHARE',[userId]);
+    if(!customer)throw Object.assign(new Error('Профиль не найден'),{status:404});
+    let customerName=String(data.name||'').trim(),phone=String(data.phone||'').trim(),address=String(data.address||'').trim();
+    if(data.addressId){
+      const {rows:[saved]}=await client.query('SELECT * FROM user_addresses WHERE id=$1 AND user_id=$2 FOR SHARE',[data.addressId,userId]);
+      if(!saved)throw Object.assign(new Error('Сохранённый адрес не найден'),{status:404});
+      customerName=saved.recipient_name;phone=saved.phone;
+      address=[saved.postal_code,saved.city,`${saved.street}, ${saved.house}`,saved.apartment&&`кв. ${saved.apartment}`].filter(Boolean).join(', ');
+    }
+    if(!customerName||!phone||!address)throw Object.assign(new Error('Заполните получателя, телефон и адрес'),{status:400});
     const {rows:items}=await client.query(`
-      SELECT c.product_id,c.size,c.quantity,p.name,p.price,v.stock
+      SELECT c.product_id,c.size,c.quantity,p.name,p.price,p.published,v.stock
       FROM cart_items c JOIN products p ON p.id=c.product_id
       JOIN product_variants v ON v.product_id=c.product_id AND v.size=c.size
       WHERE c.user_id=$1 FOR UPDATE OF v
     `,[userId]);
     if(!items.length) throw Object.assign(new Error('Корзина пуста'),{status:400});
+    for(const item of items) if(!item.published) throw Object.assign(new Error(`Товар «${item.name}» больше недоступен`),{status:409});
     for(const item of items) if(item.quantity>item.stock) throw Object.assign(new Error(`Недостаточно товара «${item.name}», размер ${item.size}`),{status:409});
     const total=items.reduce((sum,x)=>sum+x.price*x.quantity,0);
     const {rows:[order]}=await client.query(`
       INSERT INTO orders(user_id,customer_name,phone,email,address,comment,total)
       VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *
-    `,[userId,data.name,data.phone,data.email,data.address,data.comment||'',total]);
+    `,[userId,customerName,phone,customer.email,address,String(data.comment||'').trim(),total]);
     for(const item of items) {
       await client.query('INSERT INTO order_items(order_id,product_id,product_name,size,quantity,price) VALUES($1,$2,$3,$4,$5,$6)',[order.id,item.product_id,item.name,item.size,item.quantity,item.price]);
       await client.query('UPDATE product_variants SET stock=stock-$1 WHERE product_id=$2 AND size=$3',[item.quantity,item.product_id,item.size]);
@@ -355,8 +366,22 @@ export async function listOrders(userId,isModerator=false) {
 export async function updateOrderStatus(id,status) {
   const allowed=['new','confirmed','shipped','completed','cancelled'];
   if(!allowed.includes(status)) throw Object.assign(new Error('Некорректный статус'),{status:400});
-  await pool.query('UPDATE orders SET status=$1,updated_at=NOW() WHERE id=$2',[status,id]);
-  return getOrder(id,null,true);
+  const client=await pool.connect();
+  try{
+    await client.query('BEGIN');
+    const {rows:[order]}=await client.query('SELECT id,status FROM orders WHERE id=$1 FOR UPDATE',[id]);
+    if(!order)throw Object.assign(new Error('Заказ не найден'),{status:404});
+    const transitions={new:['new','confirmed','cancelled'],confirmed:['confirmed','shipped','cancelled'],shipped:['shipped','completed'],completed:['completed'],cancelled:['cancelled']};
+    if(!transitions[order.status]?.includes(status))throw Object.assign(new Error('Недопустимый переход статуса заказа'),{status:409});
+    if(status==='cancelled'&&order.status!=='cancelled'){
+      const {rows:items}=await client.query('SELECT product_id,size,quantity FROM order_items WHERE order_id=$1',[id]);
+      for(const item of items)if(item.product_id)await client.query('UPDATE product_variants SET stock=stock+$1 WHERE product_id=$2 AND size=$3',[item.quantity,item.product_id,item.size]);
+    }
+    await client.query('UPDATE orders SET status=$1,updated_at=NOW() WHERE id=$2',[status,id]);
+    await client.query('COMMIT');
+    return getOrder(id,null,true);
+  }catch(error){await client.query('ROLLBACK');throw error}
+  finally{client.release()}
 }
 
 export async function auditModerator({moderatorId,action,entityType,entityId,details={},ip,userAgent}) {
